@@ -1,46 +1,50 @@
-// Importe le module "path" depuis la bibliothèque "path"
-import path from "path";
-// Importe le module "fs" depuis la bibliothèque "fs"
-import fs from "fs";
-// Importe le module "React" depuis la bibliothèque "react"
-import React from "react";
-// Importe le module "ReactDOMServer" depuis la bibliothèque "react-dom"
-import ReactDOMServer from "react-dom/server";
-// Importe le module "express" depuis la bibliothèque "express"
+// server/server.jsx
 import express from "express";
-// Importe le composant "App" depuis le fichier "../src/App.js"
+import fs from "fs";
+import path from "path";
+import React from "react";
+import { renderToString } from "react-dom/server";
 import App from "../src/App";
+import axios from "axios";
 
-// Définit une constante "PORT" qui prend la valeur de la variable d'environnement "process.env.PORT" ou 3000 si non définie
-const PORT = process.env.PORT || 3000;
-// Crée une application express
 const app = express();
+const PORT = process.env.PORT || 3000;
 
-// Définit une route pour la racine du serveur (http://localhost:PORT/)
-app.get("/", (req, res) => {
-  // Lit le contenu du fichier "index.html" dans le dossier "public" en utilisant l'encodage "utf8" (utilisé comme un modèle de réponse)
-  fs.readFile(path.resolve("./public/index.html"), "utf8", (err, data) => {
-    if (err) {
-      // En cas d'erreur lors de la lecture du fichier, logge l'erreur dans la console et renvoie une réponse avec le code d'erreur 500 et le message "An error occurred"
+app.use(express.static(path.resolve(__dirname, "../build")));
+
+app.get("*", (req, res) => {
+  axios
+    .get("https://jsonplaceholder.typicode.com/todos")
+    .then((response) => {
+      const todos = response.data;
+      const appString = renderToString(<App todos={todos} />);
+
+      fs.readFile(
+        path.resolve(__dirname, "../public/index.html"),
+        "utf8",
+        (err, data) => {
+          if (err) {
+            console.error("Error reading index.html", err);
+            return res.status(500).send("An error occurred");
+          }
+
+          const document = data.replace(
+            '<div id="root"></div>',
+            `<div id="root">${appString}</div><script>window.__INITIAL_DATA__ = ${JSON.stringify(
+              todos
+            )}</script>`
+          );
+
+          return res.send(document);
+        }
+      );
+    })
+    .catch((error) => {
+      console.error("Error fetching todos", error);
       return res.status(500).send("An error occurred");
-    }
-
-    // Remplace la balise "<div id="root"></div>" dans le contenu du fichier "index.html" par le rendu du composant "App" au format permet l'interactivité. 
-    return res.send(
-      data.replace(
-        '<div id="root"></div>',
-        `<div id="root">${ReactDOMServer.renderToString(<App />)}</div>`
-      )
-    );
-  });
+    });
 });
 
-// Utilise le middleware "express.static" pour servir les fichiers statiques depuis le dossier "dist" (par exemple, des fichiers JavaScript, CSS, etc.), avec une mise en cache de 30 jours (ici le fichier bundle.js généré)
-app.use(
-  express.static(path.resolve(__dirname, "..", "dist"), { maxAge: "30d" })
-);
-
-// Met le serveur en écoute sur le port spécifié, et affiche un message dans la console lorsque le serveur démarre
 app.listen(PORT, () => {
   console.log(`Server is listening on port ${PORT}`);
 });
